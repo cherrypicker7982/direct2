@@ -4,13 +4,15 @@
 # r2: 기본 코드에서 값 변경하기. 5분봉.  5 25 100 1440(5일선) 정배열일때 매수하는걸로.
 # r3: 수익이랑 손절조건 추가해주기
 # 4: price_buy 가격이 계속 바뀌어서 매도가 안나감.. 매도 익절 손절가가 계속바껴서. 수정함
-# r5: git 업로드용임.    ip주소 211.196.254.138  (신림) ,15.164.229.188,172.31.38.8 (aws), 210.100.171.123 (이디야), 116.126.242.160(기숙사)
-# ip주소 211.196.254.138,15.164.229.188,172.31.38.8,210.100.171.123,116.126.242.160
+# r5: git 업로드용임.    ip주소 211.196.254.138  (신림원룸) , 210.100.171.123 (화성이디야), 116.126.242.160(기숙사)  15.164.229.188,172.31.38.8 (aws), 175.197.81.89(신림이디야)
+# ip주소 175.197.81.89,210.100.171.123,116.126.242.160,54.180.158.164,172.31.13.138
 
 # r6: aws 업로드용 조건 단순화
 # r7: 매도조건 오류에 대한 로직 수정중..
-# r8: 주문 나가면 체결될때까지 기다리게되는데 취소하는 로직 추가 필요.
-
+# r8: 주문 나가면 체결될때까지 기다리게되는데 취소하는 로직 추가 대충완료. error 프린트뜨긴하는데 일단... 5일선 위에잇으면 매수하게 간단히테스트
+# r9: 매수하고 매수취소 매도하고 매도취소 로직 추가
+# r10: 로직 에러 수정..?  upbit.get_order == 0 이면 미체결이 없는거고.. 0이 아니면 미체결이 남아잇는거임.
+# r11: 로직 수정 완료. 매수하고 미체결이면 취소, 매도하고 미체결이면 취소
 
 
 import threading
@@ -49,6 +51,9 @@ class Consumer(threading.Thread):
         wait_flag = False    # wait_flag = ? 하나의 1분봉에서 1번의 매수매도만하도록 제한하는것임.
 
 
+
+
+
     ########## upbit 텍스트파일 에서 key 읽어오는 코드 ##############
 
         # with open("upbit.txt", "r") as f:
@@ -57,14 +62,36 @@ class Consumer(threading.Thread):
 
     ###################################################################
 
-        key0 = "nZcAVsx9IPqDCSOxoBzSXF7Sxz6HHw7Oxch942h0"
-        key1 = "2jyUKlHOocISRaxAsW5vuWdR1RoHz4GAb6qVRG7Q"
+        key0 = "zzN1KT2lInh1JbJh43ld9hGcV1gsXC8FdJjF5nPr"
+        key1 = "NxMatjB1eV2WSBv9zF1hKsXlF7kz5tWbNs68VV4M"
 
         upbit = pyupbit.Upbit(key0, key1)
         print('upbit 접속 성공')
 
-        cash = upbit.get_balance()
+
+
+
+        #### ======== 코드 시작시 기존 잔고 있으면매도 로직##########################
+        try:
+            volume = upbit.get_balance(self.ticker)  # 코드 처음 켰는데 잔고가 있으면? 매수 안해야함
+            if volume > 1:  # 잔고가 1보다 크면 있다고 봄.
+                upbit.sell_market_order(self.ticker, volume)
+                print(" 코드 시작시 있던 잔고 매도 완료 ")
+
+                time.sleep(5)
+
+        except:
+            pass
+
+
+        cash = upbit.get_balance()   #초기 잔고 읽어오기
         print("보유현금", cash)
+
+
+
+
+
+        time_to_wait = 60   # 매수 매도 주문 내놓고 취소를 몇초동안 기다릴것인지?
 
 
         i = 0
@@ -97,7 +124,17 @@ class Consumer(threading.Thread):
                 ## 에러 처리 코드 시작. 현재가 없을 경우##
                 if price_curr == None:
                     continue
+
                 ## 에러 처리 코드 끝. 현재가 없을 경우##
+
+
+
+
+
+
+
+
+
 
 
 
@@ -110,7 +147,9 @@ class Consumer(threading.Thread):
                     #### hold_flag = flase 일때가 비어있는 상태임!!!  매수안한상태
 
                 if hold_flag == False and wait_flag == False and \
-                    price_curr >= curr_ma5 :
+                    price_curr >= curr_ma5 and curr_ma5 >= curr_ma25 and curr_ma25 >= curr_ma100 and \
+                    price_curr <= curr_ma25 * 1.01 and price_curr <= curr_ma100 * 1.03:
+                    #price_curr >= curr_ma5 :
                     # 0.05%
                     #
                     # price_curr >= curr_ma5 and curr_ma5 >= curr_ma25 and curr_ma25 >= curr_ma100 and \
@@ -120,11 +159,13 @@ class Consumer(threading.Thread):
                     cash_order = int( cash * 0.2 )   #잔고에서 주문할 금액 설정
                     buy_vol = int(cash_order / price_curr)
 
+                    time.sleep(5)
+                    print("146줄 매수 주문 하려고 기다리는중")
+
                     #ret = upbit.buy_market_order(self.ticker, cash_order)  # 시장가 매수
                     ret = upbit.buy_limit_order(self.ticker, price_buy, buy_vol)  #지정가 매수
 
-
-                    print("매수 주문 ret:", ret)
+                    print("매수 주문 실행 ret:", ret)
 
 
                     ### 에러처리코드 시작. 주문이 이상할 경우 다시 처음으로 돌아감 ###
@@ -140,28 +181,51 @@ class Consumer(threading.Thread):
                     #### 에러처리 시작. 주문한 매수 주문이 제대로 웹서버에서 처리 됐는지 확인. 에러일 경우 반복해서 주문 조회함 ####
                     while True:
                         #print( "133번줄 실행 ")
-                        order = upbit.get_order(ret['uuid'])
-                        print( '136줄 order 실행', order)
-                        if order != None and len(order['trades']) > 0:
-                            print("매수 주문 처리 완료", order)
+                        # print( '136줄 order 실행', order)
+
+                        time.sleep(time_to_wait)  # 몇초나 기다릴지?
+                        print('179줄 매수주문 후 기다리는중')
+
+                        order = upbit.get_order(self.ticker)
+
+                        print("186줄 미체결 order 값 확인:", order)
+                        #print('184줄 len(order[state])값 확인:', order)
+
+                        if order == []:    ## order = [] 이면, 체결된것임. 매수주문 안된경우.   and len(order['trades'])
+
+                            price_buy_bal = price_buy  # price_buy_balance = 내가 매수한 평단가. 매수가격. 매수주문가가 5이평값으로 계속 바뀌기 때문임!!! 그래서 다시 정의필요
+                            print('192줄 매수완료. price_buy 값 출력: ', price_buy)
+
+                            hold_flag = True  # 매수 됐으면 hold flag를 true로 바꾸기
+
+
+
                             break                                               #주문 처리가 제대로 됐으면 while 탈출함
                         else:
-                            print("매수 주문 대기 중")
-                            time.sleep(0.5)
 
-                    while True:
-                        volume = upbit.get_balance(self.ticker)
-                        if volume != None:
+
+                            print("202줄 매수 주문 아직 미체결임", order)
+                            cancel_order = upbit.cancel_order(ret['uuid'])  # 주문 대기가 너무 길어지면 취소하기.
+                            print("206줄 매수 주문 취소 완료: ", cancel_order) ##################수정필요@!#!@#!@#!@!$!@$!@#!@#!@#
+
+                            hold_flag = False   #잔고가 없기 때문에 hold flag를 없다고 바꿔줘야됨.
+
+
                             break
-                        time.sleep(0.5)
 
-                    ### 매수 완료 되었으면 더이상 매수 안함.  hold flag= true 이면 매수 멈춤.
-                    #### 중요 ###
-                    price_buy_bal = price_buy    # price_buy_balance = 내가 매수한 평단가. 매수가격. 매수주문가가 5이평값으로 계속 바뀌기 때문임!!! 그래서 다시 정의필요
-                    hold_flag = True
 
-                    print('162줄 price_buy 값 출력: ', price_buy)
-                    ### 매수 안하는 코드 완료
+                    # while True:
+                    #     volume = upbit.get_balance(self.ticker)
+                    #     if volume != None:
+                    #         break
+                    #     time.sleep(0.5)
+
+                    try:
+                        volume = upbit.get_balance(self.ticker)
+
+                    except:
+                        pass
+
 
 
                     #### 에러처리 끝끝. 주문한 매수 주문이 제대로 웹서버에서 처리 됐는지 확인 ###
@@ -181,21 +245,22 @@ class Consumer(threading.Thread):
                 ###############================= 매도 익절 조건 확인 및 주문 시작 ================###################
                 #### hold_flag = flase 일때가 비어있는 상태임!!!  매도안한상태
 
-                per_plus = 1.005
-                per_minus = 0.995
+                per_plus = 1.03
+                per_minus = 0.97
 
                 if hold_flag == True and wait_flag == False and \
                     price_curr >= (price_buy_bal * per_plus):
                     print("186줄 진입. 익절 주문 조건 만족중")
                     # 0.05%
 
-                    price_sell = pyupbit.get_tick_size(price_buy_bal * per_plus)   # 현재가로 팔건데 틱사이즈에 맞게 수정
+                    price_sell = pyupbit.get_tick_size( price_buy_bal * per_plus )   # 현재가로 팔건데 틱사이즈에 맞게 수정
 
 
                     # ret = upbit.buy_market_order(self.ticker, cash_order)  # 시장가 매수
                     ret = upbit.sell_limit_order(self.ticker, price_sell, volume)  # 지정가 매도
 
-                    print("매도 익절 주문 ret:", ret)
+
+                    print("매도 익절 주문 후 대기중 ret:", ret)
 
                     ### 에러처리코드 시작. 주문이 이상할 경우 다시 처음으로 돌아감 ###
                     if ret == None or "error" in ret:
@@ -207,25 +272,50 @@ class Consumer(threading.Thread):
                     #### 에러처리 시작. 주문한 매도 주문이 제대로 웹서버에서 처리 됐는지 확인. 에러일 경우 반복해서 주문 조회함 ####
                     while True:
                         # print( "133번줄 실행 ")
-                        order = upbit.get_order(ret['uuid'])
-                        print('210줄 order 실행', order)
-                        if order != None and len(order['trades']) > 0:
-                            print("매도 익절 주문 처리 완료", order)
+                        print("265줄 매도 익절 주문 대기 중")
+                        time.sleep(time_to_wait)
+
+                        order = upbit.get_order(self.ticker)
+                        #print('269줄 order 실행', order)
+
+
+
+
+
+
+                        if order == []:
+
+                            print("285줄 매도 익절 주문 체결 완료", order)
+                            # time.sleep(time_to_wait)
+
+                            hold_flag = False
+
                             break  # 주문 처리가 제대로 됐으면 while 탈출함
-                        else:
-                            print("매도 익절 주문 대기 중")
-                            time.sleep(0.5)
+                        else: #익절 주문 체결 완료
 
-                    while True:
-                        volume = upbit.get_balance(self.ticker)
+                            print("293줄 매도 익절 주문 아직 미체결됨", order)
 
-                        print("217줄 while문 도는중")
-                        if volume < 1:   ### 매수랑 다름. 여기는 볼륨이 이 1보다 작을때는 없다고 봄.
+                            cancel_order = upbit.cancel_order(ret['uuid'])  # 주문 대기가 너무 길어지면 취소하기.
+                            print("296줄 매도 익절 주문 취소 완료: ", cancel_order)
+
+                            hold_flag = True
+
+
+
                             break
-                        time.sleep(0.5)
+
+
+                    #
+                    # while True:
+                    #     volume = upbit.get_balance(self.ticker)
+                    #
+                    #     print("217줄 while문 도는중")
+                    #     if volume < 1:   ### 매수랑 다름. 여기는 볼륨이 이 1보다 작을때는 없다고 봄.
+                    #         break
+                    #     time.sleep(0.5)
 
                     ### 매도 완료 되었으면 다시 매수할수있게설정.  hold flag= false 이면 매수함.
-                    hold_flag = False
+                    # hold_flag = False
 
                     #### 에러처리 끝끝. 주문한 매수 주문이 제대로 웹서버에서 처리 됐는지 확인 ###
             ################ ================================ 매도 익절 주문 및 체결 완료 ==============================#############################################
@@ -246,15 +336,12 @@ class Consumer(threading.Thread):
 
                 if hold_flag == True and wait_flag == False and \
                     price_curr < (price_buy_bal * per_minus):
-                    print("245줄 진입. 손절 주문 조건 만족중")
+                    print("320줄 진입. 손절 주문 조건 만족중")
                     print("현재가, 손절기준가 출력", price_curr, price_buy_bal * per_minus)
                     # 0.05%
 
                     price_sell = pyupbit.get_tick_size( price_buy_bal * per_minus )  # 현재가로 팔건데 틱사이즈에 맞게 수정
-
-                    # ret = upbit.buy_market_order(self.ticker, cash_order)  # 시장가 매수
                     ret = upbit.sell_limit_order(self.ticker, price_sell, volume)  # 지정가 매도
-
                     print("매도 손절 주문 ret:", ret)
 
                     ### 에러처리코드 시작. 주문이 이상할 경우 다시 처음으로 돌아감 ###
@@ -266,25 +353,49 @@ class Consumer(threading.Thread):
                     #### 에러처리 시작. 주문한 매도 주문이 제대로 웹서버에서 처리 됐는지 확인. 에러일 경우 반복해서 주문 조회함 ####
                     while True:
                         # print( "133번줄 실행 ")
-                        order = upbit.get_order(ret['uuid'])
-                        print('260줄 order 실행', order)
-                        if order != None and len(order['trades']) > 0:
-                            print("매도 손절 주문 처리 완료", order)
-                            break  # 주문 처리가 제대로 됐으면 while 탈출함
-                        else:
-                            print("매도 손절 주문 대기 중")
-                            time.sleep(0.5)
+                        print("매도 손절 주문 대기 중")
 
-                    while True:
-                        volume = upbit.get_balance(self.ticker)
-                        print("거래량 출력 273줄", volume)
-                        if volume < 1:  ### 매수랑 다름. 여기는 볼륨이 즉 잔고가 1보닺 작으면 없다고봄.
+                        time.sleep(time_to_wait)
+
+                        order = upbit.get_order(ret['uuid'])
+                        print('335줄 실행')
+
+
+
+                        if order == []:
+                            print("363줄 매도 손절 주문 체결 완료")
+                            print("364줄  order 값 출력", order)
+                            # time.sleep(time_to_wait)
+
+                            hold_flag = False
+
+                            break  # 주문 처리가 제대로 됐으면 while 탈출함
+                        else:  # 익절 주문 체결 완료
+
+                            print("매도 손절 주문 아직 미체결됨", order)
+
+                            cancel_order = upbit.cancel_order(ret['uuid'])  # 주문 대기가 너무 길어지면 취소하기.
+                            print("375줄 매도 손절 주문 취소 완료: ", cancel_order)
+
+                            hold_flag = True
+
+
+
                             break
-                        time.sleep(0.5)
-                        print("276줄 while문 도는중")
+
+
+
+                    #
+                    # while True:
+                    #     volume = upbit.get_balance(self.ticker)
+                    #     print("거래량 출력 273줄", volume)
+                    #     if volume < 1:  ### 매수랑 다름. 여기는 볼륨이 즉 잔고가 1보닺 작으면 없다고봄.
+                    #         break
+                    #     time.sleep(0.5)
+                    #     print("276줄 while문 도는중")
 
                     ### 매도 완료 되었으면 다시 매수할수있게설정.  hold flag= false 이면 매수함.
-                    hold_flag = False
+                    # hold_flag = False
 
                     #### 에러처리 끝끝. 주문한 매수 주문이 제대로 웹서버에서 처리 됐는지 확인 ###
             ################ ================================ 매도 주문 및 체결 완료 ==============================#############################################
@@ -372,25 +483,14 @@ class Consumer(threading.Thread):
 
 
                 # 일정기간마다 minutes 중간중간 현상황 프린팅해주기
-                if i == (5 * 60 * 1):
+                if i == (2 * 60 * 1):
                     print(f"[{datetime.datetime.now()}] 현재가 {price_curr}, 매수 목표가 {price_buy}, 이평값 ma5: {curr_ma5:.2f}, ma25: {curr_ma25:.2f}, ma100: {curr_ma100:.2f}, ma1440: {curr_ma1440:.2f}, hold_flag {hold_flag}, wait_flag {wait_flag}")
                     i = 0
 
 
-                    #### ======== 주문 길어지면 취소하는 로직 시작 ##########################
-                    try:
-                        if ret['uuid'] != None:
-                            cancel_order = upbit.cancel_order(ret['uuid'])  # 주문 대기가 너무 길어지면 취소하기.
-                            print("383줄 주문 취소 완료: ", cancel_order)
-                    except:
-                        pass
-
-
-                    ####3 ======= 주문 길어지면 취소하는 로직 끝 ######################
-
                 i += 1
             except:
-                print("379줄 데이터 없음 error")
+                print("501줄 한바퀴 돌고 끝남")
 
             time.sleep(0.2)
 
